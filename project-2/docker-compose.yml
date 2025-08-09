@@ -1,0 +1,104 @@
+version: '3.8'
+
+# This compose file defines a local analytics stack consisting of:
+# * **PostgreSQL** – persistent relational database for storing processed data
+# * **Apache Kafka & Zookeeper** – message broker for moving data from the ETL
+#   layer into the database (RabbitMQ could be swapped in with minor changes)
+# * **Apache NiFi** – flow‑based ETL engine to ingest and transform the CSV
+#   dataset.  NiFi can be accessed on port 8080.
+# * **Apache Airflow** – orchestrator for scheduling NiFi flows and downstream
+#   loading jobs.  The webserver is exposed on port 8081.
+#
+# Each service mounts the relevant project directories so that flows, DAGs and
+# configuration can be version controlled alongside your code.
+
+services:
+  postgres:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: netflix
+      POSTGRES_PASSWORD: netflix
+      POSTGRES_DB: netflixdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  zookeeper:
+    image: bitnami/zookeeper:latest
+    restart: unless-stopped
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: "yes"
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: bitnami/kafka:latest
+    restart: unless-stopped
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_CFG_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    ports:
+      - "9092:9092"
+
+  nifi:
+    image: apache/nifi:latest
+    restart: unless-stopped
+    environment:
+      NIFI_WEB_HTTP_PORT: 8080
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount the custom flow configuration into NiFi conf.  You can import
+      # templates via the UI or use the REST API to deploy a flow definition.
+      - ./nifi:/opt/nifi/nifi-current/extensions
+      # Mount the dataset so NiFi can read the CSV directly.
+      - ./data:/opt/nifi/data
+
+  airflow-webserver:
+    image: apache/airflow:2.9.2
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - airflow-scheduler
+    environment:
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://netflix:netflix@postgres:5432/netflixdb
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__FERNET_KEY: "dGVtcG9yYXJ5X2Zlcm5ldF9rZXk="
+      AIRFLOW__WEBSERVER__WORKERS: 2
+      AIRFLOW_UID: 50000
+      AIRFLOW_GID: 50000
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./data:/opt/airflow/data  # mount data for produce_to_kafka task
+    ports:
+      - "8081:8080"
+    command: webserver
+
+  airflow-scheduler:
+    image: apache/airflow:2.9.2
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://netflix:netflix@postgres:5432/netflixdb
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW_UID: 50000
+      AIRFLOW_GID: 50000
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./data:/opt/airflow/data  # mount data for produce_to_kafka task
+    command: scheduler
+
+volumes:
+  postgres_data:

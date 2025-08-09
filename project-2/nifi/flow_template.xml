@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  NiFi template for the Netflix ETL pipeline.
+
+  This template provides a simple skeleton of a data flow that reads
+  a CSV file, splits it into records, converts each record to JSON and
+  publishes it to a Kafka topic.  It is intentionally lightweight and
+  should be customised via the NiFi UI after import.
+
+  Steps to use:
+    1. Start NiFi (via docker-compose).
+    2. Access the UI at http://localhost:8080.
+    3. Upload this template (Templates › Upload Template) and drag it onto the canvas.
+    4. Edit the processors to point to the correct file path and Kafka
+       configuration.
+-->
+<template encoding-version="1.0">
+  <description>Template for reading Netflix CSV, converting to JSON and publishing to Kafka.</description>
+  <groupId>netflix_etl_group</groupId>
+  <name>Netflix ETL Pipeline</name>
+  <snippet>
+    <processGroups/>
+    <processors>
+      <!-- GetFile processor to ingest the CSV.  Configure the directory
+           property after import to point to /opt/nifi/data. -->
+      <processor>
+        <id>getfile-processor-id</id>
+        <name>GetFile</name>
+        <position>
+          <x>0.0</x>
+          <y>0.0</y>
+        </position>
+        <config>
+          <properties>
+            <property>
+              <name>Input Directory</name>
+              <value>/opt/nifi/data</value>
+            </property>
+            <property>
+              <name>Keep Source File</name>
+              <value>true</value>
+            </property>
+          </properties>
+        </config>
+      </processor>
+      <!-- Additional processors such as UpdateRecord/ConvertRecord and
+           PublishKafkaRecord_2_6 should be added via the NiFi UI after
+           importing this template. -->
+    </processors>
+    <connections/>
+  </snippet>
+</template>
